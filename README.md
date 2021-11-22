@@ -1,9 +1,9 @@
 <p align="center"><img src="https://raw.githubusercontent.com/egal/art/main/logo.svg" height="150"></p>
 <h1 align="center">Egal | Installer</h1>
 <!-- Badges -->
-<p align="center">
+[comment]: <> (<p align="center">)
 [comment]: <> ( <a href="https://packagist.org/packages/egal/framework"><img src="https://poser.pugx.org/egal/framework/v"></a>)
-</p>
+[comment]: <> (</p>)
 
 ## Новости
 
