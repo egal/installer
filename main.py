@@ -134,11 +134,10 @@ def main():
                 },
             },
             'rabbitmq': {
-                'image': 'egalbox/rabbitmq:3.9.7',
+                'image': 'egalbox/rabbitmq:2.0.0-beta.1',  # TODO: Сменить на стабильную версию.
                 'restart': 'unless-stopped',
                 'environment': {
-                    'RABBITMQ_USERNAME': '${RABBITMQ_USER}',
-                    # TODO: Сменить RABBITMQ_USERNAME на RABBITMQ_USER после обновления в образе egalbox/rabbitmq.
+                    'RABBITMQ_USER': '${RABBITMQ_USER}',
                     'RABBITMQ_PASSWORD': '${RABBITMQ_PASSWORD}',
                 },
             },
