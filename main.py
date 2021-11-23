@@ -80,9 +80,9 @@ def main():
     client_type = questionary.select('What type of client you need?', choices=['Vue.js', 'Nuxt.js']).ask()
 
     if client_type == 'Vue.js':
-        client_git_url = 'git@github.com:egal/egal-vue-project.git'
+        client_git_url = 'git@github.com:egal/vue-project.git'
     elif client_type == 'Nuxt.js':
-        client_git_url = 'git@github.com:egal/egal-nuxt-project.git'
+        client_git_url = 'git@github.com:egal/nuxt-project.git'
 
     client_path = 'client'
     git('clone', client_git_url, client_path)
@@ -116,7 +116,7 @@ def main():
                 'WAIT_HOSTS': 'rabbitmq:5672,postgres:5432',
             },
         }
-        git('clone', 'git@github.com:egal/egal-egal-php-project.git', service_path)
+        git('clone', 'git@github.com:egal/php-project.git', service_path)
         rm_dir(f'{service_path}/.git')
         rm_dir(f'{service_path}/.github')
         console.print(f'Service `{service_name}` added!', style='green bold')
