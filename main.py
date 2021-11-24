@@ -160,7 +160,7 @@ def main():
                 },
             },
             'rabbitmq': {
-                'image': 'egalbox/rabbitmq:2.0.0-beta.1',  # TODO: Сменить на стабильную версию.
+                'image': 'egalbox/rabbitmq:2.0.0-beta.3-management',  # TODO: Сменить на стабильную версию.
                 'restart': 'unless-stopped',
                 'environment': {
                     'RABBITMQ_USER': '${RABBITMQ_USER}',
