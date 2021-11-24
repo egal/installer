@@ -8,7 +8,6 @@ from sys import exit
 import random
 from shutil import rmtree as rm_dir
 import inflection
-import nginx
 import pathlib
 
 console = Console()
@@ -226,15 +225,6 @@ def main():
     docker_compose_deploy = {
         'version': DOCKER_COMPOSE_VERSION,
         'services': {
-            'proxy': {
-                'build': 'server/proxy',
-                'restart': 'unless-stopped',
-                'depends_on': ['client', 'web-service'],
-                'environment': {
-                    'WAIT_HOSTS': 'web-service:8080,client:80',
-                },
-                'ports': [{'published': 80, 'target': 80}, {'published': 443, 'target': 443}]
-            },
             'client': {
                 'build': 'client',
                 'restart': 'unless-stopped',
@@ -256,36 +246,6 @@ def main():
         'version': DOCKER_COMPOSE_VERSION,
         'services': {}
     }
-
-    pathlib.Path('server/proxy').mkdir(parents=True, exist_ok=True)
-
-    file = open('server/proxy/Dockerfile', 'w+')
-    file.write('\n'.join(map(str, [
-        'FROM nginx:1.19.6-alpine',
-        'ADD https://github.com/ufoscout/docker-compose-wait/releases/download/2.8.0/wait /wait',
-        'RUN chmod +x /wait',
-        'COPY .conf /etc/nginx/conf.d/default.conf',
-        'CMD /bin/sh -c "/wait && nginx -g \'daemon off;\'"',
-    ])) + '\n')
-    file.close()
-
-    nginx_conf = nginx.Conf()
-    nginx_server_conf = nginx.Server()
-    nginx_server_conf.add(
-        nginx.Key('listen', '*:80'),
-        nginx.Location(
-            '/',
-            nginx.Key('proxy_pass', 'http://client:8080')
-        ),
-        nginx.Location(
-            '/api',
-            nginx.Key('rewrite', '^/api(.*) /$1  break'),
-            nginx.Key('proxy_pass', 'http://web-service:8080')
-        )
-    )
-    nginx_conf.add(nginx_server_conf)
-
-    nginx.dumpf(nginx_conf, 'server/proxy/.conf')
 
     file = open(DOCKER_COMPOSE_DEPLOY_FILE_NAME, 'w+')
     yaml.dump(docker_compose_deploy, file, default_flow_style=False, sort_keys=False)
@@ -344,15 +304,16 @@ def main():
     file.write('\n'.join(map(str, ['.env', '.idea'])) + '\n')
     file.close()
 
+    console.print('Completing...', style='bold')
+
     for service_name in user_services:
         docker_compose_fn('build', service_name)
         docker_compose_fn(
-            'run', '--rm', service_name,
-            'composer', 'install',
-            '--no-interaction', '--no-progress', '--no-cache'
+            'run', '--rm', '--no-deps', service_name,
+            'composer', 'install', '--no-interaction', '--no-progress', '--no-cache'
         )
 
-    console.print('Done!', style='green bold')
+    console.print('Completed!', style='green bold')
 
     os.remove(__file__)
 
@@ -360,5 +321,6 @@ def main():
 if __name__ == '__main__':
     main()
 
-# TODO: Билд скрипта с прикреплением к релизу
-# TODO: Подгрузка .gitlab-ci
+# TODO: Билд скрипта с прикреплением к релизу.
+# TODO: Подгрузка `.gitlab-ci`.
+# TODO: Проверка пустоты директории.
