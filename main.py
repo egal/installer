@@ -72,6 +72,7 @@ def main():
     project_name = questionary.text('Inter project name:').ask()
 
     user_services = {}
+    user_services_local = {}
     databases = ['auth']
     service_keys = []
     dot_env = []
@@ -100,7 +101,7 @@ def main():
         dot_env.append(service_key_env_name + '=' + service_key)
         dot_env_example.append(service_key_env_name + '=')
         user_services[service_int_name] = {
-            'build': service_path,
+            'build': {'context': service_path},
             'restart': 'unless-stopped',
             'depends_on': ['rabbitmq', 'postgres'],
             'environment': {
@@ -108,7 +109,7 @@ def main():
                 'APP_SERVICE_NAME': f'{service_name}',
                 'APP_SERVICE_KEY': '${' + service_key_env_name + '}',
                 'DB_HOST': 'postgres',
-                'DB_USER': '${DB_USER}',
+                'DB_USERNAME': '${DB_USERNAME}',
                 'DB_PASSWORD': '${DB_PASSWORD}',
                 'RABBITMQ_HOST': 'rabbitmq',
                 'RABBITMQ_USER': '${RABBITMQ_USER}',
@@ -116,9 +117,12 @@ def main():
                 'WAIT_HOSTS': 'rabbitmq:5672,postgres:5432',
             },
         }
+        user_services_local[service_int_name] = {
+            'build': {'args': {'DEBUG': 'true'}},
+            'volumes': [f'./{service_path}:/app:rw'],
+        }
         git('clone', 'git@github.com:egal/php-project.git', service_path)
         rm_dir(f'{service_path}/.git')
-        rm_dir(f'{service_path}/.github')
         console.print(f'Service `{service_name}` added!', style='green bold')
 
     docker_compose = {
@@ -128,9 +132,9 @@ def main():
                 'image': 'egalbox/postgres:2.1.0',
                 'restart': 'unless-stopped',
                 'environment': {
-                    'POSTGRES_USER': '${DB_USER}',
+                    'POSTGRES_USER': '${DB_USERNAME}',
                     'POSTGRES_PASSWORD': '${DB_PASSWORD}',
-                    'POSTGRES_MULTIPLE_postgresS': ','.join(map(str, databases)),
+                    'POSTGRES_MULTIPLE_DATABASES': ','.join(map(str, databases)),
                 },
             },
             'rabbitmq': {
@@ -164,7 +168,7 @@ def main():
                     'APP_SERVICE_KEY': '${AUTH_SERVICE_KEY}',
                     'APP_SERVICES': '${AUTH_SERVICE_ENVIRONMENT_APP_SERVICES}',
                     'DB_HOST': 'postgres',
-                    'DB_USER': '${DB_USER}',
+                    'DB_USERNAME': '${DB_USERNAME}',
                     'DB_PASSWORD': '${DB_PASSWORD}',
                     'RABBITMQ_HOST': 'rabbitmq',
                     'RABBITMQ_USER': '${RABBITMQ_USER}',
@@ -182,18 +186,19 @@ def main():
         'version': DOCKER_COMPOSE_VERSION,
         'services': {
             'postgres': {
-                'ports': [
-                    {'published': 5432, 'target': 5432},
-                ]
+                'ports': [{'published': 5432, 'target': 5432}]
             },
             'rabbitmq': {
-                'ports': [
-                    {'published': 15672, 'target': 15672},
-                    {'published': 5672, 'target': 5672},
-                ]
+                'ports': [{'published': 15672, 'target': 15672}, {'published': 5672, 'target': 5672}]
+            },
+            'web-service': {
+                'ports': [{'published': 80, 'target': 8080}],
             },
         }
     }
+
+    for service_name in user_services_local:
+        docker_compose_local['services'][service_name] = user_services_local[service_name]
 
     docker_compose_deploy = {
         'version': DOCKER_COMPOSE_VERSION,
@@ -205,10 +210,7 @@ def main():
                 'environment': {
                     'WAIT_HOSTS': 'web-service:8080,client:80',
                 },
-                'ports': [
-                    {'published': 80, 'target': 80},
-                    {'published': 443, 'target': 443},
-                ]
+                'ports': [{'published': 80, 'target': 80}, {'published': 443, 'target': 443}]
             },
             'client': {
                 'build': 'client',
@@ -290,7 +292,7 @@ def main():
     dot_env_example_file.write(f'PROJECT_NAME={project_name}\n')
     dot_env_example_file.write(f'COMPOSE_FILE={DOCKER_COMPOSE_FILE_NAME}:{DOCKER_COMPOSE_LOCAL_FILE_NAME}\n')
     dot_env_example_file.write('RABBITMQ_USER=user\n')
-    dot_env_example_file.write('DB_USER=user\n')
+    dot_env_example_file.write('DB_USERNAME=user\n')
     dot_env_example_file.close()
 
     file_copy(DOT_ENV_EXAMPLE_FILE_NAME, DOT_ENV_FILE_NAME)
@@ -323,5 +325,5 @@ def main():
 if __name__ == '__main__':
     main()
 
-# TODO: Билд приложения с прикреплением к релизу
+# TODO: Билд скрипта с прикреплением к релизу
 # TODO: Подгрузка .gitlab-ci
