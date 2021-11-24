@@ -124,12 +124,8 @@ def main():
             },
         }
         user_services_local[service_int_name] = {
-            'build': {
-                'args': {
-                    'DEBUG': 'true',
-                    'UID': '${UID}',
-                }
-            },
+            'build': {'args': {'DEBUG': 'true'}},
+            'user': '${UID}:${GID}',
             'volumes': [f'./{service_path}:/app:rw'],
         }
         git('clone', 'git@github.com:egal/php-project.git', service_path)
@@ -287,6 +283,7 @@ def main():
     dot_env_example_file.write('AUTH_SERVICE_ENVIRONMENT_APP_SERVICES=\n')
     dot_env_example_file.write('\n'.join(map(str, dot_env_example)) + '\n')
     dot_env_example_file.write('#UID=\n')
+    dot_env_example_file.write('#GID=\n')
     dot_env_example_file.close()
 
     dot_env_file = open(DOT_ENV_FILE_NAME, 'a')
@@ -296,6 +293,7 @@ def main():
     dot_env_file.write('AUTH_SERVICE_ENVIRONMENT_APP_SERVICES=' + ','.join(map(str, service_keys)) + '\n')
     dot_env_file.write('\n'.join(map(str, dot_env)) + '\n')
     dot_env_file.write(f'UID={os.getuid()}\n')
+    dot_env_file.write(f'GID={os.getgid()}\n')
     dot_env_file.close()
 
     dot_env_example_file.close()
