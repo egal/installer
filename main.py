@@ -1,4 +1,4 @@
-import argparse
+import os
 import questionary
 import yaml
 from shutil import copyfile as file_copy
@@ -6,7 +6,6 @@ from rich.console import Console
 import subprocess
 from sys import exit
 import random
-import string
 from shutil import rmtree as rm_dir
 import inflection
 import nginx
@@ -28,6 +27,14 @@ PLATFORM_REQUIREMENTS = ['git', 'docker', 'docker-compose']
 
 def git(*args):
     return subprocess.check_call(['git'] + list(args))
+
+
+def docker(*args):
+    return subprocess.check_call(['docker'] + list(args))
+
+
+def docker_compose_fn(*args):
+    return subprocess.check_call(['docker-compose'] + list(args))
 
 
 def generate_service_key():
@@ -118,11 +125,27 @@ def main():
             },
         }
         user_services_local[service_int_name] = {
-            'build': {'args': {'DEBUG': 'true'}},
+            'build': {
+                'args': {
+                    'DEBUG': 'true',
+                    'UID': '${UID}',
+                }
+            },
             'volumes': [f'./{service_path}:/app:rw'],
         }
         git('clone', 'git@github.com:egal/php-project.git', service_path)
         rm_dir(f'{service_path}/.git')
+        docker(
+            'run',
+            '--rm', '--interactive', '--tty',
+            '--volume', f'{pathlib.Path().resolve()}/{service_path}:/app:rw',
+            '--user', f'{os.getuid()}:{os.getgid()}',
+            'composer', 'update',
+            '--no-install', '--ignore-platform-reqs',
+            '--no-interaction', '--no-progress',
+            '--no-autoloader', '--no-cache'
+        )
+
         console.print(f'Service `{service_name}` added!', style='green bold')
 
     docker_compose = {
@@ -303,6 +326,7 @@ def main():
     dot_env_example_file.write(f'AUTH_SERVICE_KEY=\n')
     dot_env_example_file.write('AUTH_SERVICE_ENVIRONMENT_APP_SERVICES=\n')
     dot_env_example_file.write('\n'.join(map(str, dot_env_example)) + '\n')
+    dot_env_example_file.write('#UID=\n')
     dot_env_example_file.close()
 
     dot_env_file = open(DOT_ENV_FILE_NAME, 'a')
@@ -311,6 +335,7 @@ def main():
     dot_env_file.write(f'AUTH_SERVICE_KEY={generate_service_key()}\n')
     dot_env_file.write('AUTH_SERVICE_ENVIRONMENT_APP_SERVICES=' + ','.join(map(str, service_keys)) + '\n')
     dot_env_file.write('\n'.join(map(str, dot_env)) + '\n')
+    dot_env_file.write(f'UID={os.getuid()}\n')
     dot_env_file.close()
 
     dot_env_example_file.close()
@@ -319,7 +344,17 @@ def main():
     file.write('\n'.join(map(str, ['.env', '.idea'])) + '\n')
     file.close()
 
+    for service_name in user_services:
+        docker_compose_fn('build', service_name)
+        docker_compose_fn(
+            'run', '--rm', service_name,
+            'composer', 'install',
+            '--no-interaction', '--no-progress', '--no-cache'
+        )
+
     console.print('Done!', style='green bold')
+
+    os.remove(__file__)
 
 
 if __name__ == '__main__':
