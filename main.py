@@ -133,7 +133,7 @@ def main():
         docker(
             'run',
             '--rm', '--interactive', '--tty',
-            '--volume', f'./{service_path}:/app:rw',
+            '--volume', f'{pathlib.Path().resolve()}/{service_path}:/app:rw',
             '--user', f'{os.getuid()}:{os.getgid()}',
             'composer', 'update',
             '--no-install', '--ignore-platform-reqs',
@@ -164,7 +164,7 @@ def main():
                 },
             },
             'web-service': {
-                'image': 'egalbox/web-service:2.0.0beta34',  # TODO: Сменить на стабильную версию.
+                'image': 'egalbox/web-service:2.0.0',
                 'restart': 'unless-stopped',
                 'depends_on': ['rabbitmq'],
                 'environment': {
@@ -177,7 +177,7 @@ def main():
                 },
             },
             'auth-service': {
-                'image': 'egalbox/auth-service:2.0.0beta40',
+                'image': 'egalbox/auth-service:2.0.0-beta.48',
                 'restart': 'unless-stopped',
                 'depends_on': ['rabbitmq', 'postgres'],
                 'environment': {
@@ -319,3 +319,4 @@ if __name__ == '__main__':
 
 # TODO: Подгрузка `.gitlab-ci`.
 # TODO: Проверка пустоты директории.
+# TODO: Выставление COMPOSE_NAME.
