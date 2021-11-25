@@ -156,7 +156,7 @@ def main():
                 },
             },
             'rabbitmq': {
-                'image': 'egalbox/rabbitmq:2.0.0-beta.3-management',  # TODO: Сменить на стабильную версию.
+                'image': 'egalbox/rabbitmq:2.0.0-management',  # TODO: Сменить на стабильную версию.
                 'restart': 'unless-stopped',
                 'environment': {
                     'RABBITMQ_USER': '${RABBITMQ_USER}',
@@ -177,7 +177,7 @@ def main():
                 },
             },
             'auth-service': {
-                'image': 'egalbox/auth-service:2.0.0-beta.48',
+                'image': 'egalbox/auth-service:2.0.0',
                 'restart': 'unless-stopped',
                 'depends_on': ['rabbitmq', 'postgres'],
                 'environment': {
