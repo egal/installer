@@ -133,7 +133,7 @@ def main():
         docker(
             'run',
             '--rm', '--interactive', '--tty',
-            '--volume', f'{pathlib.Path().resolve()}/{service_path}:/app:rw',
+            '--volume', f'./{service_path}:/app:rw',
             '--user', f'{os.getuid()}:{os.getgid()}',
             'composer', 'update',
             '--no-install', '--ignore-platform-reqs',
@@ -313,12 +313,9 @@ def main():
 
     console.print('Completed!', style='green bold')
 
-    os.remove(__file__)
-
 
 if __name__ == '__main__':
     main()
 
-# TODO: Билд скрипта с прикреплением к релизу.
 # TODO: Подгрузка `.gitlab-ci`.
 # TODO: Проверка пустоты директории.
