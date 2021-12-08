@@ -87,9 +87,9 @@ def main():
     client_type = questionary.select('What type of client you need?', choices=['Vue.js', 'Nuxt.js']).ask()
 
     if client_type == 'Vue.js':
-        client_git_url = 'git@github.com:egal/vue-project.git'
+        client_git_url = 'https://github.com/egal/vue-project.git'
     elif client_type == 'Nuxt.js':
-        client_git_url = 'git@github.com:egal/nuxt-project.git'
+        client_git_url = 'https://github.com/egal/nuxt-project.git'
 
     client_path = 'client'
     git('clone', client_git_url, client_path)
@@ -128,7 +128,7 @@ def main():
             'user': '${UID}:${GID}',
             'volumes': [f'./{service_path}:/app:rw'],
         }
-        git('clone', 'git@github.com:egal/php-project.git', service_path)
+        git('clone', 'https://github.com/egal/php-project.git', service_path)
         rm_dir(f'{service_path}/.git')
         docker(
             'run',
