@@ -1,4 +1,7 @@
 import os
+
+from termcolor import cprint
+from pyfiglet import figlet_format
 import questionary
 import yaml
 from shutil import copyfile as file_copy
@@ -72,6 +75,8 @@ def check_platform_requirements(platform_requirements, need_exit=True):
 
 
 def main():
+    cprint(figlet_format('EGAL', font='starwars'), 'green', attrs=['bold'])
+
     check_platform_requirements(PLATFORM_REQUIREMENTS)
     console.print('Starting...', style='bold')
 
@@ -320,3 +325,4 @@ if __name__ == '__main__':
 # TODO: Подгрузка `.gitlab-ci`.
 # TODO: Проверка пустоты директории.
 # TODO: Выставление COMPOSE_NAME.
+# TODO: Параметры установки.
