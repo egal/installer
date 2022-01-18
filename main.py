@@ -1,17 +1,18 @@
 import os
+import requests
+import yaml
+import questionary
+import subprocess
+import random
+import inflection
+import pathlib
 
 from termcolor import cprint
 from pyfiglet import figlet_format
-import questionary
-import yaml
 from shutil import copyfile as file_copy
 from rich.console import Console
-import subprocess
 from sys import exit
-import random
 from shutil import rmtree as rm_dir
-import inflection
-import pathlib
 
 console = Console()
 DOCKER_COMPOSE_VERSION = '3.7'
@@ -72,6 +73,16 @@ def check_platform_requirements(platform_requirements, need_exit=True):
 
     console.print('Everyone platform requirements is present!', style='green bold')
     return True
+
+
+def get_repo_latest_release_version(repo_name, replace_version_prefix=True):
+    response = requests.get(f"https://api.github.com/repos/egal/{repo_name}/releases/latest")
+    tag_name = response.json()['tag_name']
+
+    if replace_version_prefix:
+        return tag_name.replace('v', '', 1)
+
+    return tag_name
 
 
 def main():
@@ -161,7 +172,7 @@ def main():
                 },
             },
             'rabbitmq': {
-                'image': 'egalbox/rabbitmq:2.0.0-management',  # TODO: Сменить на стабильную версию.
+                'image': f"egalbox/rabbitmq:{get_repo_latest_release_version('rabbitmq')}-management",
                 'restart': 'unless-stopped',
                 'environment': {
                     'RABBITMQ_USER': '${RABBITMQ_USER}',
@@ -169,7 +180,7 @@ def main():
                 },
             },
             'web-service': {
-                'image': 'egalbox/web-service:2.0.0',
+                'image': f"egalbox/web-service:{get_repo_latest_release_version('web-service')}",
                 'restart': 'unless-stopped',
                 'depends_on': ['rabbitmq'],
                 'environment': {
@@ -182,7 +193,7 @@ def main():
                 },
             },
             'auth-service': {
-                'image': 'egalbox/auth-service:2.0.0',
+                'image': f"egalbox/auth-service:{get_repo_latest_release_version('auth-service')}",
                 'restart': 'unless-stopped',
                 'depends_on': ['rabbitmq', 'postgres'],
                 'environment': {
