@@ -92,6 +92,21 @@ def main():
     cprint(figlet_format('EGAL', font='starwars'), 'green', attrs=['bold'])
 
     check_platform_requirements(PLATFORM_REQUIREMENTS)
+
+    # ------------------------------------- Checking dir is empty ------------------------------------- #
+
+    initial_count = 0
+    dir = '.'
+    for path in os.listdir(dir):
+        if os.path.isfile(os.path.join(dir, path)):
+            initial_count += 1
+
+    if initial_count > 1:
+        console.print('Directory is not empty!', style='red bold')
+        exit(1)
+
+    # -------------------------------------------------------------------------- #
+
     console.print('Starting...', style='bold')
 
     project_name = questionary.text('Inter project name:').ask()
@@ -391,6 +406,5 @@ def main():
 if __name__ == '__main__':
     main()
 
-# TODO: Проверка пустоты директории.
 # TODO: Выставление COMPOSE_NAME.
 # TODO: Параметры установки.
