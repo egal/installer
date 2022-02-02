@@ -364,11 +364,6 @@ def main():
     phpunit_stub = phpunit_stub_file.read()
     phpunit_stub_file.close()
 
-    print(deploy_stub)
-    print(migration_stub)
-    print(phpcs_stub)
-    print(phpunit_stub)
-
     deploy_file = open('.gitlab-ci/deploy.gitlab-ci.yml', mode='a')
     testing_file = open('.gitlab-ci/testing.deploy.gitlab-ci.yml', mode='a')
 
