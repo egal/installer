@@ -303,6 +303,7 @@ def main():
 
     dot_env_example_file = open(DOT_ENV_EXAMPLE_FILE_NAME, 'w+')
     dot_env_example_file.write(f'PROJECT_NAME={project_name}\n')
+    dot_env_example_file.write(f'COMPOSE_PROJECT_NAME={project_name}\n')
     dot_env_example_file.write(f'COMPOSE_FILE={DOCKER_COMPOSE_FILE_NAME}:{DOCKER_COMPOSE_LOCAL_FILE_NAME}\n')
     dot_env_example_file.write('RABBITMQ_USER=user\n')
     dot_env_example_file.write('DB_USERNAME=user\n')
@@ -406,5 +407,4 @@ def main():
 if __name__ == '__main__':
     main()
 
-# TODO: Выставление COMPOSE_NAME.
 # TODO: Параметры установки.
