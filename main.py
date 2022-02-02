@@ -1,4 +1,6 @@
 import os
+import shutil
+
 import requests
 import yaml
 import questionary
@@ -9,10 +11,11 @@ import pathlib
 
 from termcolor import cprint
 from pyfiglet import figlet_format
-from shutil import copyfile as file_copy
+from shutil import copyfile as copy_file
+from os import remove as remove_file
 from rich.console import Console
 from sys import exit
-from shutil import rmtree as rm_dir
+from shutil import rmtree as remove_directory
 
 console = Console()
 DOCKER_COMPOSE_VERSION = '3.7'
@@ -109,7 +112,7 @@ def main():
 
     client_path = 'client'
     git('clone', client_git_url, client_path)
-    rm_dir(f'{client_path}/.git')
+    remove_directory(f'{client_path}/.git')
     console.print('Client added!', style='green bold')
 
     while questionary.confirm('Create new service?').ask():
@@ -145,7 +148,7 @@ def main():
             'volumes': [f'./{service_path}:/app:rw'],
         }
         git('clone', 'https://github.com/egal/php-project.git', service_path)
-        rm_dir(f'{service_path}/.git')
+        remove_directory(f'{service_path}/.git')
         docker(
             'run',
             '--rm', '--interactive', '--tty',
@@ -290,7 +293,7 @@ def main():
     dot_env_example_file.write('DB_USERNAME=user\n')
     dot_env_example_file.close()
 
-    file_copy(DOT_ENV_EXAMPLE_FILE_NAME, DOT_ENV_FILE_NAME)
+    copy_file(DOT_ENV_EXAMPLE_FILE_NAME, DOT_ENV_FILE_NAME)
 
     dot_env_example_file = open(DOT_ENV_EXAMPLE_FILE_NAME, 'a')
     dot_env_example_file.write('RABBITMQ_PASSWORD=\n')
@@ -318,7 +321,60 @@ def main():
     file.write('\n'.join(map(str, ['.env', '.idea'])) + '\n')
     file.close()
 
-    console.print('Completing...', style='bold')
+    # ------------------------------------- GitLab CI init ------------------------------------- #
+
+    console.print('GitLab CI initialization...', style='bold')
+
+    gitlab_ci_dir_path = '.gitlab-ci'
+    git('clone', 'https://github.com/egal/gitlab-ci.git', gitlab_ci_dir_path)
+    remove_directory(f'{gitlab_ci_dir_path}/.git')
+    remove_file(gitlab_ci_dir_path + '/.gitignore')
+    remove_file(gitlab_ci_dir_path + '/LICENSE')
+    copy_file(gitlab_ci_dir_path + '/stubs/.gitlab-ci.yml.stub', '.gitlab-ci.yml')
+
+    deploy_stub_file = open(gitlab_ci_dir_path + '/stubs/deploy.yml.stub')
+    deploy_stub = deploy_stub_file.read()
+    deploy_stub_file.close()
+
+    migration_stub_file = open(gitlab_ci_dir_path + '/stubs/migration.yml.stub')
+    migration_stub = migration_stub_file.read()
+    migration_stub_file.close()
+
+    phpcs_stub_file = open(gitlab_ci_dir_path + '/stubs/phpcs.yml.stub')
+    phpcs_stub = phpcs_stub_file.read()
+    phpcs_stub_file.close()
+
+    phpunit_stub_file = open(gitlab_ci_dir_path + '/stubs/phpunit.yml.stub')
+    phpunit_stub = phpunit_stub_file.read()
+    phpunit_stub_file.close()
+
+    print(deploy_stub)
+    print(migration_stub)
+    print(phpcs_stub)
+    print(phpunit_stub)
+
+    deploy_file = open('.gitlab-ci/deploy.gitlab-ci.yml', mode='a')
+    testing_file = open('.gitlab-ci/testing.deploy.gitlab-ci.yml', mode='a')
+
+    for service_name in user_services:
+        service_deploy = deploy_stub.replace('__SERVICE_NAME__', service_name)
+        service_migration = migration_stub.replace('__SERVICE_NAME__', service_name)
+        service_phpcs = phpcs_stub.replace('__SERVICE_NAME__', service_name)
+        service_phpunit = phpunit_stub.replace('__SERVICE_NAME__', service_name)
+
+        deploy_file.write("\n" + service_migration)
+        deploy_file.write("\n" + service_deploy)
+        testing_file.write("\n" + service_phpcs)
+        testing_file.write("\n" + service_phpunit)
+
+    deploy_file.close()
+    testing_file.close()
+
+    remove_directory(f'{gitlab_ci_dir_path}/stubs')
+
+    # ------------------------------------- Composer installing ------------------------------------- #
+
+    console.print('Composer installing...', style='bold')
 
     for service_name in user_services:
         docker_compose_fn('build', service_name)
@@ -327,13 +383,14 @@ def main():
             'composer', 'install', '--no-interaction', '--no-progress', '--no-cache'
         )
 
+    # ------------------------------------- Completed ------------------------------------- #
+
     console.print('Completed!', style='green bold')
 
 
 if __name__ == '__main__':
     main()
 
-# TODO: Подгрузка `.gitlab-ci`.
 # TODO: Проверка пустоты директории.
 # TODO: Выставление COMPOSE_NAME.
 # TODO: Параметры установки.
