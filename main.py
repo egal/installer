@@ -1,5 +1,4 @@
 import os
-import shutil
 
 import requests
 import yaml
@@ -9,8 +8,6 @@ import random
 import inflection
 import pathlib
 
-from termcolor import cprint
-from pyfiglet import figlet_format
 from shutil import copyfile as copy_file
 from os import remove as remove_file
 from rich.console import Console
@@ -89,7 +86,17 @@ def get_repo_latest_release_version(repo_name, replace_version_prefix=True):
 
 
 def main():
-    cprint(figlet_format('EGAL', font='starwars'), 'green', attrs=['bold'])
+    print("""
+    
+    ███████╗ ██████╗  █████╗ ██╗     
+    ██╔════╝██╔════╝ ██╔══██╗██║     
+    █████╗  ██║  ███╗███████║██║     
+    ██╔══╝  ██║   ██║██╔══██║██║     
+    ███████╗╚██████╔╝██║  ██║███████╗
+    ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝
+              Installer
+              
+    """)
 
     check_platform_requirements(PLATFORM_REQUIREMENTS)
 
