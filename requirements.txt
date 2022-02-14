@@ -1,9 +1,8 @@
-rich==10.14.0
-questionary==1.10.0
-PyYAML==6.0
-inflection==0.5.1
 pyinstaller==4.7
-
-termcolor~=1.1.0
-pyfiglet~=0.8.post1
-requests~=2.26.0
+inflection==0.5.1
+pyfiglet==0.8.post1
+PyYAML==6.0
+questionary==1.10.0
+requests==2.26.0
+rich==11.2.0
+termcolor==1.1.0
