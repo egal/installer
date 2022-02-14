@@ -13,6 +13,7 @@ from os import remove as remove_file
 from rich.console import Console
 from sys import exit
 from shutil import rmtree as remove_directory
+from pathlib import Path
 
 console = Console()
 DOCKER_COMPOSE_VERSION = '3.7'
@@ -344,6 +345,34 @@ def main():
     file.write('\n'.join(map(str, ['.env', '.idea'])) + '\n')
     file.close()
 
+    # ------------------------------------- server/proxy init ------------------------------------- #
+
+    # TODO: server/proxy templates and configs.
+
+    proxy_dir_path = 'server/proxy'
+    Path(proxy_dir_path).mkdir(parents=True)
+    testing_template_conf_file_name = 'testing.template.conf'
+    proxy_development_template_conf = open(proxy_dir_path + testing_template_conf_file_name, 'w+')
+    proxy_development_template_conf.write("""server {
+    listen      80;
+    server_name __SERVER_NAME__;
+
+    location / {
+        proxy_pass http://localhost:__CLIENT_PORT__;
+    }
+
+    location /api {
+        rewrite ^/api(.*) /$1  break;
+        proxy_pass http://localhost:__WEB_SERVICE_PORT__;
+    }
+}
+""")
+    proxy_development_template_conf.close()
+
+    copy_file(proxy_dir_path + testing_template_conf_file_name, proxy_dir_path + 'development.template.conf')
+    copy_file(proxy_dir_path + testing_template_conf_file_name, proxy_dir_path + 'staging.template.conf')
+    copy_file(proxy_dir_path + testing_template_conf_file_name, proxy_dir_path + 'production.template.conf')
+
     # ------------------------------------- GitLab CI init ------------------------------------- #
 
     console.print('GitLab CI initialization...', style='bold')
@@ -392,14 +421,14 @@ def main():
 
     # ------------------------------------- Composer installing ------------------------------------- #
 
-    console.print('Composer installing...', style='bold')
-
-    for service_name in user_services:
-        docker_compose_fn('build', service_name)
-        docker_compose_fn(
-            'run', '--rm', '--no-deps', service_name,
-            'composer', 'install', '--no-interaction', '--no-progress', '--no-cache'
-        )
+    # console.print('Composer installing...', style='bold')
+    #
+    # for service_name in user_services:
+    #     docker_compose_fn('build', service_name)
+    #     docker_compose_fn(
+    #         'run', '--rm', '--no-deps', service_name,
+    #         'composer', 'install', '--no-interaction', '--no-progress', '--no-cache'
+    #     )
 
     # ------------------------------------- Completed ------------------------------------- #
 
