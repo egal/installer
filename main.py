@@ -352,7 +352,7 @@ def main():
     proxy_dir_path = 'server/proxy'
     Path(proxy_dir_path).mkdir(parents=True)
     testing_template_conf_file_name = 'testing.template.conf'
-    proxy_development_template_conf = open(proxy_dir_path + testing_template_conf_file_name, 'w+')
+    proxy_development_template_conf = open(f'{proxy_dir_path}/{testing_template_conf_file_name}', 'w+')
     proxy_development_template_conf.write("""server {
     listen      80;
     server_name __SERVER_NAME__;
@@ -369,9 +369,9 @@ def main():
 """)
     proxy_development_template_conf.close()
 
-    copy_file(proxy_dir_path + testing_template_conf_file_name, proxy_dir_path + 'development.template.conf')
-    copy_file(proxy_dir_path + testing_template_conf_file_name, proxy_dir_path + 'staging.template.conf')
-    copy_file(proxy_dir_path + testing_template_conf_file_name, proxy_dir_path + 'production.template.conf')
+    copy_file(f'{proxy_dir_path}/{testing_template_conf_file_name}', f'{proxy_dir_path}/development.template.conf')
+    copy_file(f'{proxy_dir_path}/{testing_template_conf_file_name}', f'{proxy_dir_path}/staging.template.conf')
+    copy_file(f'{proxy_dir_path}/{testing_template_conf_file_name}', f'{proxy_dir_path}/production.template.conf')
 
     # ------------------------------------- GitLab CI init ------------------------------------- #
 
