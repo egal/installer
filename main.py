@@ -353,17 +353,19 @@ def main():
     Path(proxy_dir_path).mkdir(parents=True)
     testing_template_conf_file_name = 'testing.template.conf'
     proxy_development_template_conf = open(f'{proxy_dir_path}/{testing_template_conf_file_name}', 'w+')
-    proxy_development_template_conf.write("""server {
+    proxy_development_template_conf.write("""__UPSTREAMS__
+
+server {
     listen      80;
     server_name __SERVER_NAME__;
 
     location / {
-        proxy_pass http://localhost:__CLIENT_PORT__;
+        proxy_pass http://client@__SERVER_NAME__;
     }
 
     location /api {
         rewrite ^/api(.*) /$1  break;
-        proxy_pass http://localhost:__WEB_SERVICE_PORT__;
+        proxy_pass http://web-service@__SERVER_NAME__;
     }
 }
 """)
@@ -421,14 +423,14 @@ def main():
 
     # ------------------------------------- Composer installing ------------------------------------- #
 
-    # console.print('Composer installing...', style='bold')
-    #
-    # for service_name in user_services:
-    #     docker_compose_fn('build', service_name)
-    #     docker_compose_fn(
-    #         'run', '--rm', '--no-deps', service_name,
-    #         'composer', 'install', '--no-interaction', '--no-progress', '--no-cache'
-    #     )
+    console.print('Composer installing...', style='bold')
+
+    for service_name in user_services:
+        docker_compose_fn('build', service_name)
+        docker_compose_fn(
+            'run', '--rm', '--no-deps', service_name,
+            'composer', 'install', '--no-interaction', '--no-progress', '--no-cache'
+        )
 
     # ------------------------------------- Completed ------------------------------------- #
 
