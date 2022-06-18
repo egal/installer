@@ -21,9 +21,10 @@ DOCKER_COMPOSE_VERSION = '3.7'
 DOCKER_COMPOSE_FILE_NAME = 'docker-compose.yml'
 DOCKER_COMPOSE_LOCAL_FILE_NAME = 'docker-compose.local.yml'
 DOCKER_COMPOSE_DEPLOY_FILE_NAME = 'docker-compose.deploy.yml'
-DOCKER_COMPOSE_DEPLOY_DEVELOP_FILE_NAME = 'docker-compose.deploy.develop.yml'
-DOCKER_COMPOSE_DEPLOY_STAGE_FILE_NAME = 'docker-compose.deploy.stage.yml'
+DOCKER_COMPOSE_DEPLOY_DEVELOP_FILE_NAME = 'docker-compose.deploy.development.yml'
+DOCKER_COMPOSE_DEPLOY_STAGE_FILE_NAME = 'docker-compose.deploy.staging.yml'
 DOCKER_COMPOSE_DEPLOY_PRODUCTION_FILE_NAME = 'docker-compose.deploy.production.yml'
+DOCKER_COMPOSE_DEPLOY_TESTING_FILE_NAME = 'docker-compose.deploy.testing.yml'
 DOT_ENV_FILE_NAME = '.env'
 DOT_ENV_EXAMPLE_FILE_NAME = '.env.example'
 GITIGNORE_FILE_NAME = '.gitignore'
@@ -38,19 +39,7 @@ dot_env_example = []
 
 
 def git(*args):
-    try:
-        subprocess.check_call(['git'] + list(args))
-    except subprocess.CalledProcessError as e:
-        if e.returncode == 128:
-            print("""subprocess.CalleProcessError: Command returned non-zero exit status 128.
-            Retrying clone process...
-            """)
-            print(args)
-            git(args)
-            exit()
-        raise
-    else:
-        return True
+    return subprocess.check_call(['git'] + list(args))
 
 
 def docker(*args):
@@ -138,17 +127,16 @@ def update_user_services_local(service_name, service_path):
 
 def init_user_service_dir(service_path, git_repo_url):
     """Initialize directory containing source code for specific service"""
-    git('clone', git_repo_url, service_path)
+    git('clone', '--branch', '37_add_testing_xml_templates', git_repo_url, service_path)
     remove_directory(f'{service_path}/.git')
     docker(
         'run',
         '--rm', '--interactive', '--tty',
         '--volume', f'{pathlib.Path().resolve()}/{service_path}:/app:rw',
         '--user', f'{os.getuid()}:{os.getgid()}',
-        'composer', 'update',
-        '--no-install', '--ignore-platform-reqs',
-        '--no-interaction', '--no-progress',
-        '--no-autoloader', '--no-cache'
+        'composer', 'install',
+        '--ignore-platform-reqs', '--no-cache',
+        '--no-interaction', '--no-progress'
     )
 
 
@@ -251,7 +239,7 @@ def main():
         client_git_url = 'https://github.com/egal/nuxt-project.git'
 
     client_path = 'client'
-    git('clone', client_git_url, client_path)
+    git('clone', '--branch', 'vue3-template', client_git_url, client_path)
     remove_directory(f'{client_path}/.git')
     console.print('Client added!', style='green bold')
 
@@ -264,7 +252,7 @@ def main():
             continue
 
         service_key = generate_service_key()
-        databases.append(service_name)
+        databases.append(get_shorten_service_name(service_name))
         service_keys.append(get_shorten_service_name(service_name) + ':' + service_key)
         service_path = f'server/{service_name}'
         service_key_env_name = inflection.underscore(service_name).upper() + '_KEY'
@@ -331,8 +319,21 @@ def main():
         }
     }
 
+    docker_compose_deploy_testing = {
+        'version': DOCKER_COMPOSE_VERSION,
+        'services': {}
+    }
+
     for service_name in user_services_local:
         docker_compose_local['services'][service_name] = user_services_local[service_name]
+        if 'build' in user_services[service_name]:
+            docker_compose_deploy_testing['services'][service_name] = {
+                'build': {
+                    'args': {
+                        'DEBUG': 'true'
+                    }
+                }
+            }
 
     docker_compose_deploy = {
         'version': DOCKER_COMPOSE_VERSION,
@@ -384,6 +385,10 @@ def main():
     yaml.dump(docker_compose_local, file, default_flow_style=False, sort_keys=False)
     file.close()
 
+    file = open(DOCKER_COMPOSE_DEPLOY_TESTING_FILE_NAME, 'w+')
+    yaml.dump(docker_compose_deploy_testing, file, default_flow_style=False, sort_keys=False)
+    file.close()
+
     dot_env_example_file = open(DOT_ENV_EXAMPLE_FILE_NAME, 'w+')
     dot_env_example_file.write(f'PROJECT_NAME={project_name}\n')
     dot_env_example_file.write(f'COMPOSE_PROJECT_NAME={project_name}\n')
@@ -433,12 +438,12 @@ def main():
         server_name __SERVER_NAME__;
 
         location / {
-            proxy_pass http://localhost:__CLIENT_PORT__;
+            proxy_pass http://client@__SERVER_NAME__;
         }
 
         location /api {
             rewrite ^/api(.*) /$1  break;
-            proxy_pass http://localhost:__WEB_SERVICE_PORT__;
+            proxy_pass http://web-service@__SERVER_NAME__;
         }
     }
     """)
@@ -453,7 +458,7 @@ def main():
     console.print('GitLab CI initialization...', style='bold')
 
     gitlab_ci_dir_path = '.gitlab-ci'
-    # git('clone', 'https://github.com/egal/gitlab-ci.git', gitlab_ci_dir_path)
+    git('clone', 'https://github.com/egal/gitlab-ci.git', gitlab_ci_dir_path)
     remove_directory(f'{gitlab_ci_dir_path}/.git')
     remove_file(gitlab_ci_dir_path + '/.gitignore')
     remove_file(gitlab_ci_dir_path + '/LICENSE')
@@ -494,6 +499,13 @@ def main():
     deploy_file = open('.gitlab-ci/deploy.gitlab-ci.yml', mode='a')
     testing_file = open('.gitlab-ci/testing.deploy.gitlab-ci.yml', mode='a')
 
+    phpcs_config_equals = """phpcs-config-equals:test:
+  extends: .template
+  stage: testing
+  needs:
+    - prepare
+  script:"""
+    cmp_phpcs_script = ' cmp -s'
     for service_name in user_services:
         if 'build' in user_services[service_name]:
             service_build = build_service_image_stub.replace('__SERVICE_NAME__', service_name)
@@ -506,6 +518,7 @@ def main():
             deploy_file.write("\n" + service_deploy)
             testing_file.write("\n" + service_phpcs)
             testing_file.write("\n" + service_phpunit)
+            cmp_phpcs_script += f' server/{service_name}/phpcs.xml'
         elif 'image' in user_services[service_name]:
             service_pull = pull_service_image_stub.replace('__SERVICE_NAME__', service_name)
             service_deploy = deploy_needs_pull_stub.replace('__SERVICE_NAME__', service_name)
@@ -514,28 +527,16 @@ def main():
             deploy_file.write("\n" + service_migration)
             deploy_file.write("\n" + service_deploy)
 
+    if cmp_phpcs_script.count('server/') > 1:
+        testing_file.write("\n" + phpcs_config_equals + cmp_phpcs_script + "\n")
+    else:
+        testing_file.write(
+            "\n" + phpcs_config_equals + " exit 1 # TODO: Need implementation. Example: `cmp -s server/first-service/phpcs.xml server/second-service/phpcs.xml server/third-service/phpcs.xml`" + "\n")
+
     deploy_file.close()
     testing_file.close()
 
     remove_directory(f'{gitlab_ci_dir_path}/stubs')
-
-    # ------------------------------------- Composer installing ------------------------------------- #
-
-    console.print('Composer installing...', style='bold')
-
-    for service_name in user_services:
-        docker(
-            'run',
-            '--rm', '--interactive', '--tty',
-            '--volume', f'{pathlib.Path().resolve()}/{service_path}:/app:rw',
-            '--user', f'{os.getuid()}:{os.getgid()}',
-            'composer', 'install',
-            '--ignore-platform-reqs', '--no-cache',
-            '--no-interaction', '--no-progress'
-        )
-
-    # ------------------------------------- Completed ------------------------------------- #
-
     console.print('Completed!', style='green bold')
 
 
