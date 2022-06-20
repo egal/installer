@@ -127,7 +127,7 @@ def update_user_services_local(service_name, service_path):
 
 def init_user_service_dir(service_path, git_repo_url):
     """Initialize directory containing source code for specific service"""
-    git('clone', '--branch', '37_add_testing_xml_templates', git_repo_url, service_path)
+    git('clone', git_repo_url, service_path)
     remove_directory(f'{service_path}/.git')
     docker(
         'run',
@@ -158,7 +158,19 @@ def init_auth_service():
             'build': {'context': auth_service_path},
         }
         update_user_services_local(auth_service_name, auth_service_path)
-        init_user_service_dir(auth_service_path, 'https://github.com/egal/auth-service.git')
+        git('clone', '--branch', '35_updates_corresponding_for_installer', 'https://github.com/egal/auth-service.git',
+            auth_service_path)
+        remove_directory(f'{auth_service_path}/.git')
+        docker(
+            'run',
+            '--rm', '--interactive', '--tty',
+            '--volume', f'{pathlib.Path().resolve()}/{auth_service_path}:/app:rw',
+            '--user', f'{os.getuid()}:{os.getgid()}',
+            'composer', 'install',
+            '--ignore-platform-reqs', '--no-cache',
+            '--no-interaction', '--no-progress'
+        )
+        # init_user_service_dir(auth_service_path, 'https://github.com/egal/auth-service.git')
 
     auth_service_definition.update({
         'restart': 'unless-stopped',
