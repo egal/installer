@@ -158,8 +158,7 @@ def init_auth_service():
             'build': {'context': auth_service_path},
         }
         update_user_services_local(auth_service_name, auth_service_path)
-        git('clone', '--branch', '35_updates_corresponding_for_installer', 'https://github.com/egal/auth-service.git',
-            auth_service_path)
+        git('clone', '--branch', '35_updates_corresponding_for_installer', 'https://github.com/egal/auth-service.git', auth_service_path)
         remove_directory(f'{auth_service_path}/.git')
         docker(
             'run',
@@ -212,7 +211,7 @@ def get_shorten_service_name(service_name):
 
 def main():
     print("""
-
+    
     ███████╗ ██████╗  █████╗ ██╗     
     ██╔════╝██╔════╝ ██╔══██╗██║     
     █████╗  ██║  ███╗███████║██║     
@@ -220,7 +219,7 @@ def main():
     ███████╗╚██████╔╝██║  ██║███████╗
     ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝
               Installer
-
+              
     """)
 
     check_platform_requirements(PLATFORM_REQUIREMENTS)
@@ -288,6 +287,12 @@ def main():
                     'POSTGRES_PASSWORD': '${DB_PASSWORD}',
                     'POSTGRES_MULTIPLE_DATABASES': ','.join(map(str, databases)),
                 },
+                'healthcheck': {
+                    'test': 'pg_isready --username=${DB_USERNAME} --dbname=auth',
+                    'interval': '30s',
+                    'timeout': '30s',
+                    'retries': 3,
+                },
             },
             'rabbitmq': {
                 'image': f"egalbox/rabbitmq:{get_repo_latest_release_version('rabbitmq')}-management",
@@ -295,6 +300,12 @@ def main():
                 'environment': {
                     'RABBITMQ_USER': '${RABBITMQ_USER}',
                     'RABBITMQ_PASSWORD': '${RABBITMQ_PASSWORD}',
+                },
+                'healthcheck': {
+                    'test': 'rabbitmq-diagnostics -q ping',
+                    'interval': '30s',
+                    'timeout': '30s',
+                    'retries': 3,
                 },
             },
             'web-service': {
@@ -346,13 +357,23 @@ def main():
                     }
                 }
             }
+        docker_compose['services']['postgres']['healthcheck']['test'] += ' && pg_isready --username=${DB_USERNAME} --dbname=' + get_shorten_service_name(service_name)
 
     docker_compose_deploy = {
         'version': DOCKER_COMPOSE_VERSION,
         'services': {
             'client': {
-                'build': 'client',
+                'build': {
+                    'context': 'client',
+                    'args': {
+                        'API_URL': 'http://${DOMAIN}/api',
+                    },
+                },
                 'restart': 'unless-stopped',
+                'ports': ['0.0.0.0::80'],
+            },
+            'web-service': {
+                'ports': ['0.0.0.0::8080'],
             },
         },
     }
@@ -542,8 +563,7 @@ def main():
     if cmp_phpcs_script.count('server/') > 1:
         testing_file.write("\n" + phpcs_config_equals + cmp_phpcs_script + "\n")
     else:
-        testing_file.write(
-            "\n" + phpcs_config_equals + " exit 1 # TODO: Need implementation. Example: `cmp -s server/first-service/phpcs.xml server/second-service/phpcs.xml server/third-service/phpcs.xml`" + "\n")
+        testing_file.write("\n" + phpcs_config_equals + " exit 1 # TODO: Need implementation. Example: `cmp -s server/first-service/phpcs.xml server/second-service/phpcs.xml server/third-service/phpcs.xml`" + "\n")
 
     deploy_file.close()
     testing_file.close()
