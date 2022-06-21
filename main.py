@@ -563,7 +563,7 @@ def main():
     if cmp_phpcs_script.count('server/') > 1:
         testing_file.write("\n" + phpcs_config_equals + cmp_phpcs_script + "\n")
     else:
-        testing_file.write("\n" + phpcs_config_equals + " exit 1 # TODO: Need implementation. Example: `cmp -s server/first-service/phpcs.xml server/second-service/phpcs.xml server/third-service/phpcs.xml`" + "\n")
+        testing_file.write("\n" + phpcs_config_equals + " exit 0 # TODO: Need implementation. Example: `cmp -s server/first-service/phpcs.xml server/second-service/phpcs.xml server/third-service/phpcs.xml`" + "\n")
 
     deploy_file.close()
     testing_file.close()
