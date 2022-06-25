@@ -144,8 +144,10 @@ def init_auth_service():
     """Initialize auth-service directory based on build type selection.
     Returns dict type definition of auth-service
     """
-    auth_service_type = questionary.select('What build type of auth-service you need?',
-                                           choices=['Build from image', 'Build from context']).ask()
+    auth_service_type = questionary.select(
+        'What build type of auth-service you need?',
+        choices=['Build from image', 'Build from context'
+    ]).ask()
     auth_service_name = 'auth-service'
 
     if auth_service_type == 'Build from image':
@@ -158,18 +160,7 @@ def init_auth_service():
             'build': {'context': auth_service_path},
         }
         update_user_services_local(auth_service_name, auth_service_path)
-        git('clone', '--branch', '35_updates_corresponding_for_installer', 'https://github.com/egal/auth-service.git', auth_service_path)
-        remove_directory(f'{auth_service_path}/.git')
-        docker(
-            'run',
-            '--rm', '--interactive', '--tty',
-            '--volume', f'{pathlib.Path().resolve()}/{auth_service_path}:/app:rw',
-            '--user', f'{os.getuid()}:{os.getgid()}',
-            'composer', 'install',
-            '--ignore-platform-reqs', '--no-cache',
-            '--no-interaction', '--no-progress'
-        )
-        # init_user_service_dir(auth_service_path, 'https://github.com/egal/auth-service.git')
+        init_user_service_dir(auth_service_path, 'https://github.com/egal/auth-service.git')
 
     auth_service_definition.update({
         'restart': 'unless-stopped',
@@ -211,15 +202,15 @@ def get_shorten_service_name(service_name):
 
 def main():
     print("""
-    
-    ███████╗ ██████╗  █████╗ ██╗     
-    ██╔════╝██╔════╝ ██╔══██╗██║     
-    █████╗  ██║  ███╗███████║██║     
-    ██╔══╝  ██║   ██║██╔══██║██║     
+
+    ███████╗ ██████╗  █████╗ ██╗
+    ██╔════╝██╔════╝ ██╔══██╗██║
+    █████╗  ██║  ███╗███████║██║
+    ██╔══╝  ██║   ██║██╔══██║██║
     ███████╗╚██████╔╝██║  ██║███████╗
     ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝
               Installer
-              
+
     """)
 
     check_platform_requirements(PLATFORM_REQUIREMENTS)
@@ -241,16 +232,16 @@ def main():
     console.print('Starting...', style='bold')
 
     project_name = questionary.text('Enter project name:').ask()
-
     client_type = questionary.select('What type of client you need?', choices=['Vue.js', 'Nuxt.js']).ask()
+    client_path = 'client'
 
     if client_type == 'Vue.js':
-        client_git_url = 'https://github.com/egal/vue-project.git'
+        git_repo_url = 'https://github.com/egal/vue-project.git'
+        git('clone', '--branch', 'vue3-template', git_repo_url, client_path)
     elif client_type == 'Nuxt.js':
-        client_git_url = 'https://github.com/egal/nuxt-project.git'
+        git_repo_url = 'https://github.com/egal/nuxt-project.git'
+        git('clone', git_repo_url, client_path)
 
-    client_path = 'client'
-    git('clone', '--branch', 'vue3-template', client_git_url, client_path)
     remove_directory(f'{client_path}/.git')
     console.print('Client added!', style='green bold')
 
@@ -370,10 +361,10 @@ def main():
                     },
                 },
                 'restart': 'unless-stopped',
-                'ports': ['0.0.0.0::80'],
+                'ports': ["'0.0.0.0::80'"],
             },
             'web-service': {
-                'ports': ['0.0.0.0::8080'],
+                'ports': ["'0.0.0.0::8080'"],
             },
         },
     }
@@ -467,7 +458,7 @@ def main():
     testing_template_conf_file_name = 'testing.template.conf'
     proxy_development_template_conf = open(f'{proxy_dir_path}/{testing_template_conf_file_name}', 'w+')
     proxy_development_template_conf.write("""__UPSTREAMS__
-    
+
 server {
     listen      80;
     server_name __SERVER_NAME__;
@@ -540,9 +531,11 @@ server {
   needs:
     - prepare
   script:"""
-    cmp_phpcs_script = ' cmp -s'
+    cmp_phpcs_script = ''
+    i = 0
     for service_name in user_services:
         if 'build' in user_services[service_name]:
+            i += 1
             service_build = build_service_image_stub.replace('__SERVICE_NAME__', service_name)
             service_deploy = deploy_needs_build_stub.replace('__SERVICE_NAME__', service_name)
             service_migration = migration_needs_build_stub.replace('__SERVICE_NAME__', service_name)
@@ -553,7 +546,10 @@ server {
             deploy_file.write("\n" + service_deploy)
             testing_file.write("\n" + service_phpcs)
             testing_file.write("\n" + service_phpunit)
-            cmp_phpcs_script += f' server/{service_name}/phpcs.xml'
+            if i % 2:
+                cmp_phpcs_script += f' cmp -s server/{service_name}/phpcs.xml'
+            else:
+                cmp_phpcs_script += f' server/{service_name}/phpcs.xml &&'
         elif 'image' in user_services[service_name]:
             service_pull = pull_service_image_stub.replace('__SERVICE_NAME__', service_name)
             service_deploy = deploy_needs_pull_stub.replace('__SERVICE_NAME__', service_name)
@@ -562,6 +558,7 @@ server {
             deploy_file.write("\n" + service_migration)
             deploy_file.write("\n" + service_deploy)
 
+    cmp_phpcs_script = re.sub(' &&', '', cmp_phpcs_script)
     if cmp_phpcs_script.count('server/') > 1:
         testing_file.write("\n" + phpcs_config_equals + cmp_phpcs_script + "\n")
     else:
