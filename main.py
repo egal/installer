@@ -7,6 +7,7 @@ import subprocess
 import random
 import inflection
 import pathlib
+import re
 
 from shutil import copyfile as copy_file
 from os import remove as remove_file
@@ -20,13 +21,21 @@ DOCKER_COMPOSE_VERSION = '3.7'
 DOCKER_COMPOSE_FILE_NAME = 'docker-compose.yml'
 DOCKER_COMPOSE_LOCAL_FILE_NAME = 'docker-compose.local.yml'
 DOCKER_COMPOSE_DEPLOY_FILE_NAME = 'docker-compose.deploy.yml'
-DOCKER_COMPOSE_DEPLOY_DEVELOP_FILE_NAME = 'docker-compose.deploy.develop.yml'
-DOCKER_COMPOSE_DEPLOY_STAGE_FILE_NAME = 'docker-compose.deploy.stage.yml'
+DOCKER_COMPOSE_DEPLOY_DEVELOP_FILE_NAME = 'docker-compose.deploy.development.yml'
+DOCKER_COMPOSE_DEPLOY_STAGE_FILE_NAME = 'docker-compose.deploy.staging.yml'
 DOCKER_COMPOSE_DEPLOY_PRODUCTION_FILE_NAME = 'docker-compose.deploy.production.yml'
+DOCKER_COMPOSE_DEPLOY_TESTING_FILE_NAME = 'docker-compose.deploy.testing.yml'
 DOT_ENV_FILE_NAME = '.env'
 DOT_ENV_EXAMPLE_FILE_NAME = '.env.example'
 GITIGNORE_FILE_NAME = '.gitignore'
 PLATFORM_REQUIREMENTS = ['git', 'docker', 'docker-compose']
+
+user_services = {}
+user_services_local = {}
+databases = ['auth']
+service_keys = []
+dot_env = []
+dot_env_example = []
 
 
 def git(*args):
@@ -86,17 +95,122 @@ def get_repo_latest_release_version(repo_name, replace_version_prefix=True):
     return tag_name
 
 
+def update_user_services(service_name, service_path, service_key_env_name):
+    """Update dict user_services with new service"""
+    user_services[service_name] = {
+        'build': {'context': service_path},
+        'restart': 'unless-stopped',
+        'depends_on': ['rabbitmq', 'postgres'],
+        'environment': {
+            'APP_NAME': '${PROJECT_NAME}',
+            'APP_SERVICE_NAME': get_shorten_service_name(service_name),
+            'APP_SERVICE_KEY': '${' + service_key_env_name + '}',
+            'DB_HOST': 'postgres',
+            'DB_USERNAME': '${DB_USERNAME}',
+            'DB_PASSWORD': '${DB_PASSWORD}',
+            'RABBITMQ_HOST': 'rabbitmq',
+            'RABBITMQ_USER': '${RABBITMQ_USER}',
+            'RABBITMQ_PASSWORD': '${RABBITMQ_PASSWORD}',
+            'WAIT_HOSTS': 'rabbitmq:5672,postgres:5432',
+        },
+    }
+
+
+def update_user_services_local(service_name, service_path):
+    """Update dict user_services_local with new service"""
+    user_services_local[service_name] = {
+        'build': {'args': {'DEBUG': 'true'}},
+        'user': '${UID}:${GID}',
+        'volumes': [f'./{service_path}:/app:rw'],
+    }
+
+
+def init_user_service_dir(service_path, git_repo_url):
+    """Initialize directory containing source code for specific service"""
+    git('clone', git_repo_url, service_path)
+    remove_directory(f'{service_path}/.git')
+    docker(
+        'run',
+        '--rm', '--interactive', '--tty',
+        '--volume', f'{pathlib.Path().resolve()}/{service_path}:/app:rw',
+        '--user', f'{os.getuid()}:{os.getgid()}',
+        'composer', 'install',
+        '--ignore-platform-reqs', '--no-cache',
+        '--no-interaction', '--no-progress'
+    )
+
+
+def init_auth_service():
+    """Initialize auth-service directory based on build type selection.
+    Returns dict type definition of auth-service
+    """
+    auth_service_type = questionary.select(
+        'What build type of auth-service you need?',
+        choices=['Build from image', 'Build from context'
+    ]).ask()
+    auth_service_name = 'auth-service'
+
+    if auth_service_type == 'Build from image':
+        auth_service_definition = {
+            'image': f"egalbox/auth-service:{get_repo_latest_release_version('auth-service')}",
+        }
+    elif auth_service_type == 'Build from context':
+        auth_service_path = 'server/' + auth_service_name
+        auth_service_definition = {
+            'build': {'context': auth_service_path},
+        }
+        update_user_services_local(auth_service_name, auth_service_path)
+        init_user_service_dir(auth_service_path, 'https://github.com/egal/auth-service.git')
+
+    auth_service_definition.update({
+        'restart': 'unless-stopped',
+        'depends_on': ['rabbitmq', 'postgres'],
+        'environment': {
+            'APP_NAME': '${PROJECT_NAME}',
+            'APP_SERVICE_NAME': 'auth',
+            'APP_SERVICE_KEY': '${AUTH_SERVICE_KEY}',
+            'APP_SERVICES': '${AUTH_SERVICE_ENVIRONMENT_APP_SERVICES}',
+            'DB_HOST': 'postgres',
+            'DB_USERNAME': '${DB_USERNAME}',
+            'DB_PASSWORD': '${DB_PASSWORD}',
+            'RABBITMQ_HOST': 'rabbitmq',
+            'RABBITMQ_USER': '${RABBITMQ_USER}',
+            'RABBITMQ_PASSWORD': '${RABBITMQ_PASSWORD}',
+            'WAIT_HOSTS': 'rabbitmq:5672,postgres:5432',
+        },
+    })
+
+    user_services[auth_service_name] = auth_service_definition
+    console.print(f'Service `{auth_service_name}` added!', style='green bold')
+
+
+def yml_beautify(file_name):
+    """Add extra break before lines starting with `- `"""
+    with open(file_name, 'r+') as f:
+        file_data = f.read()
+        file_data = re.sub('- ', '  - ', file_data, flags=re.MULTILINE)
+        f.seek(0)
+        f.write(file_data)
+        f.truncate()
+        f.close()
+
+
+def get_shorten_service_name(service_name):
+    """Get service_name without `-service` at the end"""
+    return re.sub('-service', '', service_name)
+
+
 def main():
     print("""
-    
-    ███████╗ ██████╗  █████╗ ██╗     
-    ██╔════╝██╔════╝ ██╔══██╗██║     
-    █████╗  ██║  ███╗███████║██║     
-    ██╔══╝  ██║   ██║██╔══██║██║     
+
+    ███████╗ ██████╗  █████╗ ██╗
+    ██╔════╝██╔════╝ ██╔══██╗██║
+    █████╗  ██║  ███╗███████║██║
+    ██╔══╝  ██║   ██║██╔══██║██║
     ███████╗╚██████╔╝██║  ██║███████╗
     ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝
               Installer
-              
+
     """)
 
     check_platform_requirements(PLATFORM_REQUIREMENTS)
@@ -104,9 +218,9 @@ def main():
     # ------------------------------------- Checking dir is empty ------------------------------------- #
 
     initial_count = 0
-    dir = '.'
-    for path in os.listdir(dir):
-        if os.path.isfile(os.path.join(dir, path)):
+    directory = '.'
+    for path in os.listdir(directory):
+        if os.path.isfile(os.path.join(directory, path)):
             initial_count += 1
 
     if initial_count > 1:
@@ -117,71 +231,39 @@ def main():
 
     console.print('Starting...', style='bold')
 
-    project_name = questionary.text('Inter project name:').ask()
-
-    user_services = {}
-    user_services_local = {}
-    databases = ['auth']
-    service_keys = []
-    dot_env = []
-    dot_env_example = []
-
+    project_name = questionary.text('Enter project name:').ask()
     client_type = questionary.select('What type of client you need?', choices=['Vue.js', 'Nuxt.js']).ask()
+    client_path = 'client'
 
     if client_type == 'Vue.js':
-        client_git_url = 'https://github.com/egal/vue-project.git'
+        git_repo_url = 'https://github.com/egal/vue-project.git'
+        git('clone', '--branch', 'vue3-template', git_repo_url, client_path)
     elif client_type == 'Nuxt.js':
-        client_git_url = 'https://github.com/egal/nuxt-project.git'
+        git_repo_url = 'https://github.com/egal/nuxt-project.git'
+        git('clone', git_repo_url, client_path)
 
-    client_path = 'client'
-    git('clone', client_git_url, client_path)
     remove_directory(f'{client_path}/.git')
     console.print('Client added!', style='green bold')
 
+    init_auth_service()
+
     while questionary.confirm('Create new service?').ask():
-        service_name = questionary.text('Inter service name:').ask()
-        service_int_name = service_name + '-service'
+        service_name = questionary.text('Enter service name, for example `core-service`:').ask()
+        if service_name in user_services:
+            console.print('This service name is already in use. Please choose another name.', style='red bold')
+            continue
+
         service_key = generate_service_key()
-        databases.append(service_name)
-        service_keys.append(service_name + ':' + service_key)
-        service_path = f'server/{service_int_name}'
-        service_key_env_name = inflection.underscore(service_int_name).upper() + '_KEY'
+        databases.append(get_shorten_service_name(service_name))
+        service_keys.append(get_shorten_service_name(service_name) + ':' + service_key)
+        service_path = f'server/{service_name}'
+        service_key_env_name = inflection.underscore(service_name).upper() + '_KEY'
         dot_env.append(service_key_env_name + '=' + service_key)
         dot_env_example.append(service_key_env_name + '=')
-        user_services[service_int_name] = {
-            'build': {'context': service_path},
-            'restart': 'unless-stopped',
-            'depends_on': ['rabbitmq', 'postgres'],
-            'environment': {
-                'APP_NAME': '${PROJECT_NAME}',
-                'APP_SERVICE_NAME': f'{service_name}',
-                'APP_SERVICE_KEY': '${' + service_key_env_name + '}',
-                'DB_HOST': 'postgres',
-                'DB_USERNAME': '${DB_USERNAME}',
-                'DB_PASSWORD': '${DB_PASSWORD}',
-                'RABBITMQ_HOST': 'rabbitmq',
-                'RABBITMQ_USER': '${RABBITMQ_USER}',
-                'RABBITMQ_PASSWORD': '${RABBITMQ_PASSWORD}',
-                'WAIT_HOSTS': 'rabbitmq:5672,postgres:5432',
-            },
-        }
-        user_services_local[service_int_name] = {
-            'build': {'args': {'DEBUG': 'true'}},
-            'user': '${UID}:${GID}',
-            'volumes': [f'./{service_path}:/app:rw'],
-        }
-        git('clone', 'https://github.com/egal/php-project.git', service_path)
-        remove_directory(f'{service_path}/.git')
-        docker(
-            'run',
-            '--rm', '--interactive', '--tty',
-            '--volume', f'{pathlib.Path().resolve()}/{service_path}:/app:rw',
-            '--user', f'{os.getuid()}:{os.getgid()}',
-            'composer', 'update',
-            '--no-install', '--ignore-platform-reqs',
-            '--no-interaction', '--no-progress',
-            '--no-autoloader', '--no-cache'
-        )
+
+        update_user_services(service_name, service_path, service_key_env_name)
+        update_user_services_local(service_name, service_path)
+        init_user_service_dir(service_path, 'https://github.com/egal/php-project.git')
 
         console.print(f'Service `{service_name}` added!', style='green bold')
 
@@ -196,6 +278,12 @@ def main():
                     'POSTGRES_PASSWORD': '${DB_PASSWORD}',
                     'POSTGRES_MULTIPLE_DATABASES': ','.join(map(str, databases)),
                 },
+                'healthcheck': {
+                    'test': 'pg_isready --username=${DB_USERNAME} --dbname=auth',
+                    'interval': '30s',
+                    'timeout': '30s',
+                    'retries': 3,
+                },
             },
             'rabbitmq': {
                 'image': f"egalbox/rabbitmq:{get_repo_latest_release_version('rabbitmq')}-management",
@@ -203,6 +291,12 @@ def main():
                 'environment': {
                     'RABBITMQ_USER': '${RABBITMQ_USER}',
                     'RABBITMQ_PASSWORD': '${RABBITMQ_PASSWORD}',
+                },
+                'healthcheck': {
+                    'test': 'rabbitmq-diagnostics -q ping',
+                    'interval': '30s',
+                    'timeout': '30s',
+                    'retries': 3,
                 },
             },
             'web-service': {
@@ -217,25 +311,7 @@ def main():
                     'RABBITMQ_PASSWORD': '${RABBITMQ_PASSWORD}',
                     'WAIT_HOSTS': 'rabbitmq:5672',
                 },
-            },
-            'auth-service': {
-                'image': f"egalbox/auth-service:{get_repo_latest_release_version('auth-service')}",
-                'restart': 'unless-stopped',
-                'depends_on': ['rabbitmq', 'postgres'],
-                'environment': {
-                    'APP_NAME': '${PROJECT_NAME}',
-                    'APP_SERVICE_NAME': 'auth',
-                    'APP_SERVICE_KEY': '${AUTH_SERVICE_KEY}',
-                    'APP_SERVICES': '${AUTH_SERVICE_ENVIRONMENT_APP_SERVICES}',
-                    'DB_HOST': 'postgres',
-                    'DB_USERNAME': '${DB_USERNAME}',
-                    'DB_PASSWORD': '${DB_PASSWORD}',
-                    'RABBITMQ_HOST': 'rabbitmq',
-                    'RABBITMQ_USER': '${RABBITMQ_USER}',
-                    'RABBITMQ_PASSWORD': '${RABBITMQ_PASSWORD}',
-                    'WAIT_HOSTS': 'rabbitmq:5672,postgres:5432',
-                },
-            },
+            }
         },
     }
 
@@ -257,15 +333,38 @@ def main():
         }
     }
 
+    docker_compose_deploy_testing = {
+        'version': DOCKER_COMPOSE_VERSION,
+        'services': {}
+    }
+
     for service_name in user_services_local:
         docker_compose_local['services'][service_name] = user_services_local[service_name]
+        if 'build' in user_services[service_name]:
+            docker_compose_deploy_testing['services'][service_name] = {
+                'build': {
+                    'args': {
+                        'DEBUG': 'true'
+                    }
+                }
+            }
+        docker_compose['services']['postgres']['healthcheck']['test'] += ' && pg_isready --username=${DB_USERNAME} --dbname=' + get_shorten_service_name(service_name)
 
     docker_compose_deploy = {
         'version': DOCKER_COMPOSE_VERSION,
         'services': {
             'client': {
-                'build': 'client',
+                'build': {
+                    'context': 'client',
+                    'args': {
+                        'API_URL': 'http://${DOMAIN}/api',
+                    },
+                },
                 'restart': 'unless-stopped',
+                'ports': ['0.0.0.0::80'],
+            },
+            'web-service': {
+                'ports': ['0.0.0.0::8080'],
             },
         },
     }
@@ -304,9 +403,14 @@ def main():
     file = open(DOCKER_COMPOSE_FILE_NAME, 'w+')
     yaml.dump(docker_compose, file, default_flow_style=False, sort_keys=False)
     file.close()
+    yml_beautify(DOCKER_COMPOSE_FILE_NAME)
 
     file = open(DOCKER_COMPOSE_LOCAL_FILE_NAME, 'w+')
     yaml.dump(docker_compose_local, file, default_flow_style=False, sort_keys=False)
+    file.close()
+
+    file = open(DOCKER_COMPOSE_DEPLOY_TESTING_FILE_NAME, 'w+')
+    yaml.dump(docker_compose_deploy_testing, file, default_flow_style=False, sort_keys=False)
     file.close()
 
     dot_env_example_file = open(DOT_ENV_EXAMPLE_FILE_NAME, 'w+')
@@ -342,7 +446,7 @@ def main():
     dot_env_example_file.close()
 
     file = open(GITIGNORE_FILE_NAME, 'w')
-    file.write('\n'.join(map(str, ['.env', '.idea'])) + '\n')
+    file.write('\n'.join(map(str, ['.env', '.idea', 'egal-installer*'])) + '\n')
     file.close()
 
     # ------------------------------------- server/proxy init ------------------------------------- #
@@ -386,13 +490,29 @@ server {
     remove_file(gitlab_ci_dir_path + '/LICENSE')
     copy_file(gitlab_ci_dir_path + '/stubs/.gitlab-ci.yml.stub', '.gitlab-ci.yml')
 
-    deploy_stub_file = open(gitlab_ci_dir_path + '/stubs/deploy.yml.stub')
-    deploy_stub = deploy_stub_file.read()
-    deploy_stub_file.close()
+    pull_service_image_stub_file = open(gitlab_ci_dir_path + '/stubs/pull-service-image.yml.stub')
+    pull_service_image_stub = pull_service_image_stub_file.read()
+    pull_service_image_stub_file.close()
 
-    migration_stub_file = open(gitlab_ci_dir_path + '/stubs/migration.yml.stub')
-    migration_stub = migration_stub_file.read()
-    migration_stub_file.close()
+    build_service_image_stub_file = open(gitlab_ci_dir_path + '/stubs/build-service-image.yml.stub')
+    build_service_image_stub = build_service_image_stub_file.read()
+    build_service_image_stub_file.close()
+
+    deploy_needs_build_stub_file = open(gitlab_ci_dir_path + '/stubs/deploy-needs-build.yml.stub')
+    deploy_needs_build_stub = deploy_needs_build_stub_file.read()
+    deploy_needs_build_stub_file.close()
+
+    deploy_needs_pull_stub_file = open(gitlab_ci_dir_path + '/stubs/deploy-needs-pull.yml.stub')
+    deploy_needs_pull_stub = deploy_needs_pull_stub_file.read()
+    deploy_needs_pull_stub_file.close()
+
+    migration_needs_build_stub_file = open(gitlab_ci_dir_path + '/stubs/migration-needs-build.yml.stub')
+    migration_needs_build_stub = migration_needs_build_stub_file.read()
+    migration_needs_build_stub_file.close()
+
+    migration_needs_pull_stub_file = open(gitlab_ci_dir_path + '/stubs/migration-needs-pull.yml.stub')
+    migration_needs_pull_stub = migration_needs_pull_stub_file.read()
+    migration_needs_pull_stub_file.close()
 
     phpcs_stub_file = open(gitlab_ci_dir_path + '/stubs/phpcs.yml.stub')
     phpcs_stub = phpcs_stub_file.read()
@@ -405,35 +525,49 @@ server {
     deploy_file = open('.gitlab-ci/deploy.gitlab-ci.yml', mode='a')
     testing_file = open('.gitlab-ci/testing.deploy.gitlab-ci.yml', mode='a')
 
+    phpcs_config_equals = """phpcs-config-equals:test:
+  extends: .template
+  stage: testing
+  needs:
+    - prepare
+  script:"""
+    cmp_phpcs_script = ''
+    i = 0
     for service_name in user_services:
-        service_deploy = deploy_stub.replace('__SERVICE_NAME__', service_name)
-        service_migration = migration_stub.replace('__SERVICE_NAME__', service_name)
-        service_phpcs = phpcs_stub.replace('__SERVICE_NAME__', service_name)
-        service_phpunit = phpunit_stub.replace('__SERVICE_NAME__', service_name)
+        if 'build' in user_services[service_name]:
+            i += 1
+            service_build = build_service_image_stub.replace('__SERVICE_NAME__', service_name)
+            service_deploy = deploy_needs_build_stub.replace('__SERVICE_NAME__', service_name)
+            service_migration = migration_needs_build_stub.replace('__SERVICE_NAME__', service_name)
+            service_phpcs = phpcs_stub.replace('__SERVICE_NAME__', service_name)
+            service_phpunit = phpunit_stub.replace('__SERVICE_NAME__', service_name)
+            deploy_file.write("\n" + service_build)
+            deploy_file.write("\n" + service_migration)
+            deploy_file.write("\n" + service_deploy)
+            testing_file.write("\n" + service_phpcs)
+            testing_file.write("\n" + service_phpunit)
+            if i % 2:
+                cmp_phpcs_script += f' cmp -s server/{service_name}/phpcs.xml'
+            else:
+                cmp_phpcs_script += f' server/{service_name}/phpcs.xml &&'
+        elif 'image' in user_services[service_name]:
+            service_pull = pull_service_image_stub.replace('__SERVICE_NAME__', service_name)
+            service_deploy = deploy_needs_pull_stub.replace('__SERVICE_NAME__', service_name)
+            service_migration = migration_needs_pull_stub.replace('__SERVICE_NAME__', service_name)
+            deploy_file.write("\n" + service_pull)
+            deploy_file.write("\n" + service_migration)
+            deploy_file.write("\n" + service_deploy)
 
-        deploy_file.write("\n" + service_migration)
-        deploy_file.write("\n" + service_deploy)
-        testing_file.write("\n" + service_phpcs)
-        testing_file.write("\n" + service_phpunit)
+    cmp_phpcs_script = re.sub(' &&', '', cmp_phpcs_script)
+    if cmp_phpcs_script.count('server/') > 1:
+        testing_file.write("\n" + phpcs_config_equals + cmp_phpcs_script + "\n")
+    else:
+        testing_file.write("\n" + phpcs_config_equals + " exit 0 # TODO: Need implementation. Example: `cmp -s server/first-service/phpcs.xml server/second-service/phpcs.xml server/third-service/phpcs.xml`" + "\n")
 
     deploy_file.close()
     testing_file.close()
 
     remove_directory(f'{gitlab_ci_dir_path}/stubs')
-
-    # ------------------------------------- Composer installing ------------------------------------- #
-
-    console.print('Composer installing...', style='bold')
-
-    for service_name in user_services:
-        docker_compose_fn('build', service_name)
-        docker_compose_fn(
-            'run', '--rm', '--no-deps', service_name,
-            'composer', 'install', '--no-interaction', '--no-progress', '--no-cache'
-        )
-
-    # ------------------------------------- Completed ------------------------------------- #
-
     console.print('Completed!', style='green bold')
 
 
